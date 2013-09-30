@@ -231,6 +231,11 @@ MODBUS_API float modbus_get_float_dcba(const uint16_t *src);
 MODBUS_API void modbus_set_float(float f, uint16_t *dest);
 MODBUS_API void modbus_set_float_dcba(float f, uint16_t *dest);
 
+
+MODBUS_API void set_register_handlers(void *init, void *set_single, void * set_multiple,
+                           void *get, void *free_reg);
+MODBUS_API void set_io_bits_handlers(void *init, void *set, void *get, void *free_coils);
+
 #include "modbus-tcp.h"
 #include "modbus-rtu.h"
 

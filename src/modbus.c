@@ -35,6 +35,27 @@
 #include "modbus.h"
 #include "modbus-private.h"
 
+#include "default_mapping.h"
+
+void *(*init_bits)(int) = &default_init_bits;
+void *(*init_registers)(int) = &default_init_registers;
+
+void (*free_bits)(void *) = &default_free;
+void (*free_registers)(void *) = &default_free;
+
+void (*set_single_register)(int, void *, int) =
+    &default_set_single_register;
+void (*set_multiple_registers)(int, int, void *, const uint8_t *) =
+    &default_set_multiple_registers;
+void (*set_io_status)(int, void *, const uint16_t) = default_set_io_status;
+void (*set_multiple_io_status)(int, int, void *, const uint8_t *) =
+    &default_set_multiple_io_status;
+
+int (*response_io_status)(int, int, uint8_t *, uint8_t *, int) =
+    &default_response_io_status;
+int (*response_registers)(int, int, void *, uint8_t *, int) =
+    &default_response_registers;
+
 /* Internal use */
 #define MSG_LENGTH_UNDEFINED -1
 
@@ -635,31 +656,6 @@ static int check_confirmation(modbus_t *ctx, uint8_t *req,
     return rc;
 }
 
-static int response_io_status(int address, int nb,
-                              uint8_t *tab_io_status,
-                              uint8_t *rsp, int offset)
-{
-    int shift = 0;
-    /* Instead of byte (not allowed in Win32) */
-    int one_byte = 0;
-    int i;
-
-    for (i = address; i < address+nb; i++) {
-        one_byte |= tab_io_status[i] << shift;
-        if (shift == 7) {
-            /* Byte is full */
-            rsp[offset++] = one_byte;
-            one_byte = shift = 0;
-        } else {
-            shift++;
-        }
-    }
-
-    if (shift != 0)
-        rsp[offset++] = one_byte;
-
-    return offset;
-}
 
 /* Build the exception response */
 static int response_exception(modbus_t *ctx, sft_t *sft,
@@ -784,14 +780,11 @@ int modbus_reply(modbus_t *ctx, const uint8_t *req,
                 ctx, &sft,
                 MODBUS_EXCEPTION_ILLEGAL_DATA_ADDRESS, rsp);
         } else {
-            int i;
-
             rsp_length = ctx->backend->build_response_basis(&sft, rsp);
             rsp[rsp_length++] = nb << 1;
-            for (i = address; i < address + nb; i++) {
-                rsp[rsp_length++] = mb_mapping->tab_registers[i] >> 8;
-                rsp[rsp_length++] = mb_mapping->tab_registers[i] & 0xFF;
-            }
+            rsp_length = response_registers(address, nb,
+                                            mb_mapping->tab_registers,
+                                            rsp, rsp_length);
         }
     }
         break;
@@ -818,14 +811,11 @@ int modbus_reply(modbus_t *ctx, const uint8_t *req,
                 ctx, &sft,
                 MODBUS_EXCEPTION_ILLEGAL_DATA_ADDRESS, rsp);
         } else {
-            int i;
-
             rsp_length = ctx->backend->build_response_basis(&sft, rsp);
             rsp[rsp_length++] = nb << 1;
-            for (i = address; i < address + nb; i++) {
-                rsp[rsp_length++] = mb_mapping->tab_input_registers[i] >> 8;
-                rsp[rsp_length++] = mb_mapping->tab_input_registers[i] & 0xFF;
-            }
+            rsp_length = response_registers(address, nb,
+                                            mb_mapping->tab_input_registers,
+                                            rsp, rsp_length);
         }
     }
         break;
@@ -843,7 +833,7 @@ int modbus_reply(modbus_t *ctx, const uint8_t *req,
             int data = (req[offset + 3] << 8) + req[offset + 4];
 
             if (data == 0xFF00 || data == 0x0) {
-                mb_mapping->tab_bits[address] = (data) ? ON : OFF;
+                set_io_status(address, (void *)(mb_mapping->tab_bits), data);
                 memcpy(rsp, req, req_length);
                 rsp_length = req_length;
             } else {
@@ -869,8 +859,7 @@ int modbus_reply(modbus_t *ctx, const uint8_t *req,
                 MODBUS_EXCEPTION_ILLEGAL_DATA_ADDRESS, rsp);
         } else {
             int data = (req[offset + 3] << 8) + req[offset + 4];
-
-            mb_mapping->tab_registers[address] = data;
+            set_single_register(address, mb_mapping->tab_registers, data);
             memcpy(rsp, req, req_length);
             rsp_length = req_length;
         }
@@ -888,7 +877,8 @@ int modbus_reply(modbus_t *ctx, const uint8_t *req,
                 MODBUS_EXCEPTION_ILLEGAL_DATA_ADDRESS, rsp);
         } else {
             /* 6 = byte count */
-            modbus_set_bits_from_bytes(mb_mapping->tab_bits, address, nb, &req[offset + 6]);
+            set_multiple_io_status(address, nb, mb_mapping->tab_bits,
+                                   &req[offset + 6]);
 
             rsp_length = ctx->backend->build_response_basis(&sft, rsp);
             /* 4 to copy the bit address (2) and the quantity of bits */
@@ -909,12 +899,8 @@ int modbus_reply(modbus_t *ctx, const uint8_t *req,
                 ctx, &sft,
                 MODBUS_EXCEPTION_ILLEGAL_DATA_ADDRESS, rsp);
         } else {
-            int i, j;
-            for (i = address, j = 6; i < address + nb; i++, j += 2) {
-                /* 6 and 7 = first value */
-                mb_mapping->tab_registers[i] =
-                    (req[offset + j] << 8) + req[offset + j + 1];
-            }
+            set_multiple_registers(address, nb, mb_mapping->tab_registers,
+                                   &req[offset + 6]); // start of data is at 6
 
             rsp_length = ctx->backend->build_response_basis(&sft, rsp);
             /* 4 to copy the address (2) and the no. of registers */
@@ -957,12 +943,15 @@ int modbus_reply(modbus_t *ctx, const uint8_t *req,
                 ctx, &sft,
                 MODBUS_EXCEPTION_ILLEGAL_DATA_ADDRESS, rsp);
         } else {
-            uint16_t data = mb_mapping->tab_registers[address];
+            uint16_t data;
+            uint8_t tmp[2];
             uint16_t and = (req[offset + 3] << 8) + req[offset + 4];
-            uint16_t or = (req[offset + 5] << 8) + req[offset + 6];
-
+            uint16_t or = (req[offset + 5] << 8)+ req[offset + 6];
+            response_registers(address, 1, mb_mapping->tab_registers,
+                               (uint8_t *)&tmp, 0);
+            data = (tmp[1] << 8) | tmp[0];
             data = (data & and) | (or & (~and));
-            mb_mapping->tab_registers[address] = data;
+            set_single_register(address, mb_mapping->tab_registers, data);
             memcpy(rsp, req, req_length);
             rsp_length = req_length;
         }
@@ -995,22 +984,18 @@ int modbus_reply(modbus_t *ctx, const uint8_t *req,
             rsp_length = response_exception(ctx, &sft,
                                             MODBUS_EXCEPTION_ILLEGAL_DATA_ADDRESS, rsp);
         } else {
-            int i, j;
             rsp_length = ctx->backend->build_response_basis(&sft, rsp);
             rsp[rsp_length++] = nb << 1;
 
             /* Write first.
                10 and 11 are the offset of the first values to write */
-            for (i = address_write, j = 10; i < address_write + nb_write; i++, j += 2) {
-                mb_mapping->tab_registers[i] =
-                    (req[offset + j] << 8) + req[offset + j + 1];
-            }
-
+            set_multiple_registers(address_write, nb_write,
+                                   mb_mapping->tab_registers,
+                                   &req[offset + 10]);
             /* and read the data for the response */
-            for (i = address; i < address + nb; i++) {
-                rsp[rsp_length++] = mb_mapping->tab_registers[i] >> 8;
-                rsp[rsp_length++] = mb_mapping->tab_registers[i] & 0xFF;
-            }
+            rsp_length = response_registers(address, nb,
+                                            mb_mapping->tab_registers,
+                                            rsp, rsp_length);
         }
     }
         break;
@@ -1747,9 +1732,7 @@ modbus_mapping_t* modbus_mapping_new(int nb_bits, int nb_input_bits,
     if (nb_bits == 0) {
         mb_mapping->tab_bits = NULL;
     } else {
-        /* Negative number raises a POSIX error */
-        mb_mapping->tab_bits =
-            (uint8_t *) malloc(nb_bits * sizeof(uint8_t));
+       mb_mapping->tab_bits = init_bits(nb_bits);
         if (mb_mapping->tab_bits == NULL) {
             free(mb_mapping);
             return NULL;
@@ -1762,10 +1745,9 @@ modbus_mapping_t* modbus_mapping_new(int nb_bits, int nb_input_bits,
     if (nb_input_bits == 0) {
         mb_mapping->tab_input_bits = NULL;
     } else {
-        mb_mapping->tab_input_bits =
-            (uint8_t *) malloc(nb_input_bits * sizeof(uint8_t));
+        mb_mapping->tab_input_bits = init_bits(nb_input_bits);
         if (mb_mapping->tab_input_bits == NULL) {
-            free(mb_mapping->tab_bits);
+            free_bits(mb_mapping->tab_bits);
             free(mb_mapping);
             return NULL;
         }
@@ -1777,11 +1759,10 @@ modbus_mapping_t* modbus_mapping_new(int nb_bits, int nb_input_bits,
     if (nb_registers == 0) {
         mb_mapping->tab_registers = NULL;
     } else {
-        mb_mapping->tab_registers =
-            (uint16_t *) malloc(nb_registers * sizeof(uint16_t));
+        mb_mapping->tab_registers = init_registers(nb_registers);
         if (mb_mapping->tab_registers == NULL) {
-            free(mb_mapping->tab_input_bits);
-            free(mb_mapping->tab_bits);
+            free_bits(mb_mapping->tab_input_bits);
+            free_bits(mb_mapping->tab_bits);
             free(mb_mapping);
             return NULL;
         }
@@ -1794,11 +1775,11 @@ modbus_mapping_t* modbus_mapping_new(int nb_bits, int nb_input_bits,
         mb_mapping->tab_input_registers = NULL;
     } else {
         mb_mapping->tab_input_registers =
-            (uint16_t *) malloc(nb_input_registers * sizeof(uint16_t));
+           init_registers(nb_input_registers);
         if (mb_mapping->tab_input_registers == NULL) {
-            free(mb_mapping->tab_registers);
-            free(mb_mapping->tab_input_bits);
-            free(mb_mapping->tab_bits);
+            free_registers(mb_mapping->tab_registers);
+            free_bits(mb_mapping->tab_input_bits);
+            free_bits(mb_mapping->tab_bits);
             free(mb_mapping);
             return NULL;
         }
@@ -1816,13 +1797,31 @@ void modbus_mapping_free(modbus_mapping_t *mb_mapping)
         return;
     }
 
-    free(mb_mapping->tab_input_registers);
-    free(mb_mapping->tab_registers);
-    free(mb_mapping->tab_input_bits);
-    free(mb_mapping->tab_bits);
+    free_registers(mb_mapping->tab_input_registers);
+    free_registers(mb_mapping->tab_registers);
+    free_bits(mb_mapping->tab_input_bits);
+    free_bits(mb_mapping->tab_bits);
     free(mb_mapping);
 }
 
+void set_register_handlers(void *init, void *set_single, void * set_multiple,
+                           void *get, void *free_reg)
+{
+    init_registers = init;
+    set_single_register = set_single;
+    set_multiple_registers = set_multiple;
+    response_registers = get;
+    free_registers = free_reg;
+
+}
+
+void set_io_bits_handlers(void *init, void *set, void *get, void *free_coils)
+{
+    init_bits = init;
+    set_io_status = set;
+    response_io_status = get;
+    free_bits = free_coils;
+}
 #ifndef HAVE_STRLCPY
 /*
  * Function strlcpy was originally developed by
