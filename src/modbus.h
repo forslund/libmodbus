@@ -142,10 +142,10 @@ typedef struct {
     int nb_input_bits;
     int nb_input_registers;
     int nb_registers;
-    uint8_t *tab_bits;
-    uint8_t *tab_input_bits;
-    uint16_t *tab_input_registers;
-    uint16_t *tab_registers;
+    void *tab_bits;
+    void *tab_input_bits;
+    void *tab_input_registers;
+    void *tab_registers;
 } modbus_mapping_t;
 
 typedef enum
