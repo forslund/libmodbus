@@ -37,23 +37,23 @@
 
 #include "default_mapping.h"
 
-void *(*init_bits)(int) = &default_init_bits;
-void *(*init_registers)(int) = &default_init_registers;
+void *(*_init_bits)(int) = &default_init_bits;
+void *(*_init_registers)(int) = &default_init_registers;
 
-void (*free_bits)(void *) = &default_free;
-void (*free_registers)(void *) = &default_free;
+void (*_free_bits)(void *) = &default_free;
+void (*_free_registers)(void *) = &default_free;
 
-void (*set_single_register)(int, void *, int) =
+void (*_set_single_register)(int, void *, int) =
     &default_set_single_register;
-void (*set_multiple_registers)(int, int, void *, const uint8_t *) =
+void (*_set_multiple_registers)(int, int, void *, const uint8_t *) =
     &default_set_multiple_registers;
-void (*set_io_status)(int, void *, const uint16_t) = default_set_io_status;
-void (*set_multiple_io_status)(int, int, void *, const uint8_t *) =
+void (*_set_io_status)(int, void *, const uint16_t) = default_set_io_status;
+void (*_set_multiple_io_status)(int, int, void *, const uint8_t *) =
     &default_set_multiple_io_status;
 
-int (*response_io_status)(int, int, uint8_t *, uint8_t *, int) =
+int (*_response_io_status)(int, int, uint8_t *, uint8_t *, int) =
     &default_response_io_status;
-int (*response_registers)(int, int, void *, uint8_t *, int) =
+int (*_response_registers)(int, int, void *, uint8_t *, int) =
     &default_response_registers;
 
 /* Internal use */
@@ -722,9 +722,9 @@ int modbus_reply(modbus_t *ctx, const uint8_t *req,
         } else {
             rsp_length = ctx->backend->build_response_basis(&sft, rsp);
             rsp[rsp_length++] = (nb / 8) + ((nb % 8) ? 1 : 0);
-            rsp_length = response_io_status(address, nb,
-                                            mb_mapping->tab_bits,
-                                            rsp, rsp_length);
+            rsp_length = _response_io_status(address, nb,
+                                             mb_mapping->tab_bits,
+                                             rsp, rsp_length);
         }
     }
         break;
@@ -753,7 +753,7 @@ int modbus_reply(modbus_t *ctx, const uint8_t *req,
         } else {
             rsp_length = ctx->backend->build_response_basis(&sft, rsp);
             rsp[rsp_length++] = (nb / 8) + ((nb % 8) ? 1 : 0);
-            rsp_length = response_io_status(address, nb,
+            rsp_length = _response_io_status(address, nb,
                                             mb_mapping->tab_input_bits,
                                             rsp, rsp_length);
         }
@@ -782,7 +782,7 @@ int modbus_reply(modbus_t *ctx, const uint8_t *req,
         } else {
             rsp_length = ctx->backend->build_response_basis(&sft, rsp);
             rsp[rsp_length++] = nb << 1;
-            rsp_length = response_registers(address, nb,
+            rsp_length = _response_registers(address, nb,
                                             mb_mapping->tab_registers,
                                             rsp, rsp_length);
         }
@@ -813,7 +813,7 @@ int modbus_reply(modbus_t *ctx, const uint8_t *req,
         } else {
             rsp_length = ctx->backend->build_response_basis(&sft, rsp);
             rsp[rsp_length++] = nb << 1;
-            rsp_length = response_registers(address, nb,
+            rsp_length = _response_registers(address, nb,
                                             mb_mapping->tab_input_registers,
                                             rsp, rsp_length);
         }
@@ -833,7 +833,7 @@ int modbus_reply(modbus_t *ctx, const uint8_t *req,
             int data = (req[offset + 3] << 8) + req[offset + 4];
 
             if (data == 0xFF00 || data == 0x0) {
-                set_io_status(address, (void *)(mb_mapping->tab_bits), data);
+                _set_io_status(address, (void *)(mb_mapping->tab_bits), data);
                 memcpy(rsp, req, req_length);
                 rsp_length = req_length;
             } else {
@@ -859,7 +859,7 @@ int modbus_reply(modbus_t *ctx, const uint8_t *req,
                 MODBUS_EXCEPTION_ILLEGAL_DATA_ADDRESS, rsp);
         } else {
             int data = (req[offset + 3] << 8) + req[offset + 4];
-            set_single_register(address, mb_mapping->tab_registers, data);
+            _set_single_register(address, mb_mapping->tab_registers, data);
             memcpy(rsp, req, req_length);
             rsp_length = req_length;
         }
@@ -877,7 +877,7 @@ int modbus_reply(modbus_t *ctx, const uint8_t *req,
                 MODBUS_EXCEPTION_ILLEGAL_DATA_ADDRESS, rsp);
         } else {
             /* 6 = byte count */
-            set_multiple_io_status(address, nb, mb_mapping->tab_bits,
+            _set_multiple_io_status(address, nb, mb_mapping->tab_bits,
                                    &req[offset + 6]);
 
             rsp_length = ctx->backend->build_response_basis(&sft, rsp);
@@ -899,7 +899,7 @@ int modbus_reply(modbus_t *ctx, const uint8_t *req,
                 ctx, &sft,
                 MODBUS_EXCEPTION_ILLEGAL_DATA_ADDRESS, rsp);
         } else {
-            set_multiple_registers(address, nb, mb_mapping->tab_registers,
+            _set_multiple_registers(address, nb, mb_mapping->tab_registers,
                                    &req[offset + 6]); // start of data is at 6
 
             rsp_length = ctx->backend->build_response_basis(&sft, rsp);
@@ -947,11 +947,11 @@ int modbus_reply(modbus_t *ctx, const uint8_t *req,
             uint8_t tmp[2];
             uint16_t and = (req[offset + 3] << 8) + req[offset + 4];
             uint16_t or = (req[offset + 5] << 8)+ req[offset + 6];
-            response_registers(address, 1, mb_mapping->tab_registers,
+            _response_registers(address, 1, mb_mapping->tab_registers,
                                (uint8_t *)&tmp, 0);
             data = (tmp[1] << 8) | tmp[0];
             data = (data & and) | (or & (~and));
-            set_single_register(address, mb_mapping->tab_registers, data);
+            _set_single_register(address, mb_mapping->tab_registers, data);
             memcpy(rsp, req, req_length);
             rsp_length = req_length;
         }
@@ -989,11 +989,11 @@ int modbus_reply(modbus_t *ctx, const uint8_t *req,
 
             /* Write first.
                10 and 11 are the offset of the first values to write */
-            set_multiple_registers(address_write, nb_write,
+            _set_multiple_registers(address_write, nb_write,
                                    mb_mapping->tab_registers,
                                    &req[offset + 10]);
             /* and read the data for the response */
-            rsp_length = response_registers(address, nb,
+            rsp_length = _response_registers(address, nb,
                                             mb_mapping->tab_registers,
                                             rsp, rsp_length);
         }
@@ -1732,7 +1732,7 @@ modbus_mapping_t* modbus_mapping_new(int nb_bits, int nb_input_bits,
     if (nb_bits == 0) {
         mb_mapping->tab_bits = NULL;
     } else {
-       mb_mapping->tab_bits = init_bits(nb_bits);
+       mb_mapping->tab_bits = _init_bits(nb_bits);
         if (mb_mapping->tab_bits == NULL) {
             free(mb_mapping);
             return NULL;
@@ -1745,9 +1745,9 @@ modbus_mapping_t* modbus_mapping_new(int nb_bits, int nb_input_bits,
     if (nb_input_bits == 0) {
         mb_mapping->tab_input_bits = NULL;
     } else {
-        mb_mapping->tab_input_bits = init_bits(nb_input_bits);
+        mb_mapping->tab_input_bits = _init_bits(nb_input_bits);
         if (mb_mapping->tab_input_bits == NULL) {
-            free_bits(mb_mapping->tab_bits);
+            _free_bits(mb_mapping->tab_bits);
             free(mb_mapping);
             return NULL;
         }
@@ -1759,14 +1759,14 @@ modbus_mapping_t* modbus_mapping_new(int nb_bits, int nb_input_bits,
     if (nb_registers == 0) {
         mb_mapping->tab_registers = NULL;
     } else {
-        mb_mapping->tab_registers = init_registers(nb_registers);
+        mb_mapping->tab_registers = _init_registers(nb_registers);
         if (mb_mapping->tab_registers == NULL) {
-            free_bits(mb_mapping->tab_input_bits);
-            free_bits(mb_mapping->tab_bits);
+            _free_bits(mb_mapping->tab_input_bits);
+            _free_bits(mb_mapping->tab_bits);
             free(mb_mapping);
             return NULL;
         }
-        memset(mb_mapping->tab_registers, 0, nb_registers * sizeof(uint16_t));
+        //memset(mb_mapping->tab_registers, 0, nb_registers * sizeof(uint16_t));
     }
 
     /* 3X */
@@ -1775,11 +1775,11 @@ modbus_mapping_t* modbus_mapping_new(int nb_bits, int nb_input_bits,
         mb_mapping->tab_input_registers = NULL;
     } else {
         mb_mapping->tab_input_registers =
-           init_registers(nb_input_registers);
+           _init_registers(nb_input_registers);
         if (mb_mapping->tab_input_registers == NULL) {
-            free_registers(mb_mapping->tab_registers);
-            free_bits(mb_mapping->tab_input_bits);
-            free_bits(mb_mapping->tab_bits);
+            _free_registers(mb_mapping->tab_registers);
+            _free_bits(mb_mapping->tab_input_bits);
+            _free_bits(mb_mapping->tab_bits);
             free(mb_mapping);
             return NULL;
         }
@@ -1797,30 +1797,30 @@ void modbus_mapping_free(modbus_mapping_t *mb_mapping)
         return;
     }
 
-    free_registers(mb_mapping->tab_input_registers);
-    free_registers(mb_mapping->tab_registers);
-    free_bits(mb_mapping->tab_input_bits);
-    free_bits(mb_mapping->tab_bits);
+    _free_registers(mb_mapping->tab_input_registers);
+    _free_registers(mb_mapping->tab_registers);
+    _free_bits(mb_mapping->tab_input_bits);
+    _free_bits(mb_mapping->tab_bits);
     free(mb_mapping);
 }
 
 void set_register_handlers(void *init, void *set_single, void * set_multiple,
                            void *get, void *free_reg)
 {
-    init_registers = init;
-    set_single_register = set_single;
-    set_multiple_registers = set_multiple;
-    response_registers = get;
-    free_registers = free_reg;
+    _init_registers = init;
+    _set_single_register = set_single;
+    _set_multiple_registers = set_multiple;
+    _response_registers = get;
+    _free_registers = free_reg;
 
 }
 
 void set_io_bits_handlers(void *init, void *set, void *get, void *free_coils)
 {
-    init_bits = init;
-    set_io_status = set;
-    response_io_status = get;
-    free_bits = free_coils;
+    _init_bits = init;
+    _set_io_status = set;
+    _response_io_status = get;
+    _free_bits = free_coils;
 }
 #ifndef HAVE_STRLCPY
 /*
