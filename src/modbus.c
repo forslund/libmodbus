@@ -1804,8 +1804,11 @@ void modbus_mapping_free(modbus_mapping_t *mb_mapping)
     free(mb_mapping);
 }
 
-void set_register_handlers(void *init, void *set_single, void * set_multiple,
-                           void *get, void *free_reg)
+void set_register_handlers(void *(*init)(int),
+             void (*set_single)(int, void *, int),
+             void (*set_multiple)(int, int, void *, const uint8_t *),
+             int  (*get)(int, int, void *, uint8_t *, int),
+             void (*free_reg)(void *))
 {
     _init_registers = init;
     _set_single_register = set_single;
@@ -1815,7 +1818,10 @@ void set_register_handlers(void *init, void *set_single, void * set_multiple,
 
 }
 
-void set_io_bits_handlers(void *init, void *set, void *get, void *free_coils)
+void set_io_bits_handlers(void *(*init)(int), 
+                          void (*set)(int, void *, const uint16_t),
+                          int (*get)(int, int, uint8_t *, uint8_t *, int),
+                          void (*free_coils)(void *))
 {
     _init_bits = init;
     _set_io_status = set;
