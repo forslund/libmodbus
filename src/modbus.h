@@ -233,13 +233,13 @@ MODBUS_API void modbus_set_float_dcba(float f, uint16_t *dest);
 
 
 MODBUS_API void set_register_handlers(void *(*init)(int),
-                int (*set_single)(int, void *, int, int),
-                int (*set_multiple)(int, int, void *, int, const uint8_t *),
-                int (*get)(int, int, void *, int, uint8_t *, int),
+                int (*set)(int, void *, int, int),
+                int  (*get)(int, void *, int, uint16_t *),
                 void (*free_reg)(void *));
-MODBUS_API void set_io_bits_handlers(void *(*init)(int),
+
+MODBUS_API void set_io_bits_handlers(void *(*init)(int), 
                 int (*set)(int, void *, int, const uint16_t),
-                int (*get)(int, int, uint8_t *, int, uint8_t *, int),
+                int (*get)(int, uint8_t *, int, uint8_t *),
                 void (*free_coils)(void *));
 
 #include "modbus-tcp.h"
