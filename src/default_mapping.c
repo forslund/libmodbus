@@ -8,69 +8,78 @@
 
 /* functions working on the modbus_mapping_t structure */
 
-static int modbus_mapping_read_coils(void* modbus_mapping_, uint16_t starting_address, uint16_t quantity, uint16_t* byte_count, uint8_t coils[])
+static int modbus_mapping_read_coils(void* modbus_mapping_,
+                            uint16_t starting_address, uint16_t quantity,
+                            uint16_t* byte_count, uint8_t coils[])
 {
     modbus_mapping_t* modbus_mapping = (modbus_mapping_t*)modbus_mapping_;
-    if(starting_address + quantity > modbus_mapping->nb_bits)
+    if (starting_address + quantity > modbus_mapping->nb_bits)
         return -1; /* return invalid address */
     int i, shift, out;
-    for(i = 0; i < quantity; ++i) {
+    for (i = 0; i < quantity; ++i) {
         shift = i % 8;
         out = i / 8;
-        if(shift == 0)
+        if (shift == 0)
             coils[out]= 0;
         coils[out] |= modbus_mapping->tab_bits[starting_address + i] << shift;
     }
     return 0;
 }
 
-static int modbus_mapping_read_inputs(void* modbus_mapping_, uint16_t starting_address, uint16_t quantity, uint16_t* byte_count, uint8_t inputs[])
+static int modbus_mapping_read_inputs(void* modbus_mapping_,
+                            uint16_t starting_address, uint16_t quantity,
+                            uint16_t* byte_count, uint8_t inputs[])
 {
     modbus_mapping_t* modbus_mapping = (modbus_mapping_t*)modbus_mapping_;
-    if(starting_address + quantity > modbus_mapping->nb_input_bits)
+    if (starting_address + quantity > modbus_mapping->nb_input_bits)
         return -1; /* return invalid address */
     int i, shift, out;
-    for(i = 0; i < quantity; ++i) {
+    for (i = 0; i < quantity; ++i) {
         shift = i % 8;
         out = i / 8;
-        if(shift == 0)
+        if (shift == 0)
             inputs[out]= 0;
         inputs[out] |= modbus_mapping->tab_input_bits[starting_address + i] << shift;
     }
     return 0;
 }
 
-static int modbus_mapping_read_holding_registers(void* modbus_mapping_, uint16_t starting_address, uint16_t quantity, uint16_t* byte_count, uint16_t values[])
+static int modbus_mapping_read_holding_registers(void* modbus_mapping_,
+                            uint16_t starting_address, uint16_t quantity,
+                            uint16_t* byte_count, uint16_t values[])
 {
     modbus_mapping_t* modbus_mapping = (modbus_mapping_t*)modbus_mapping_;
-    if(starting_address + quantity > modbus_mapping->nb_registers)
+    if (starting_address + quantity > modbus_mapping->nb_registers)
         return -1; /* return invalid address */
     int i;
-    for(i = 0; i < quantity; ++i) {
+    for (i = 0; i < quantity; ++i) {
         values[i] = modbus_mapping->tab_registers[starting_address + i];
     }
     return 0;
 }
 
-static int modbus_mapping_read_input_registers(void* modbus_mapping_, uint16_t starting_address, uint16_t quantity, uint16_t* byte_count, uint16_t values[])
+static int modbus_mapping_read_input_registers(void* modbus_mapping_,
+                            uint16_t starting_address, uint16_t quantity,
+                            uint16_t* byte_count, uint16_t values[])
 {
     modbus_mapping_t* modbus_mapping = (modbus_mapping_t*)modbus_mapping_;
-    if(starting_address + quantity > modbus_mapping->nb_input_registers)
+    if (starting_address + quantity > modbus_mapping->nb_input_registers)
         return -1; /* return invalid address */
     int i;
-    for(i = 0; i < quantity; ++i) {
+    for (i = 0; i < quantity; ++i) {
         values[i] = modbus_mapping->tab_input_registers[starting_address + i];
     }
     return 0;
 }
 
-static int modbus_mapping_write_single_coil(void* modbus_mapping_, uint16_t address, uint8_t on)
+static int modbus_mapping_write_single_coil(void* modbus_mapping_,
+                            uint16_t address, uint8_t on)
 {
     modbus_mapping_t* modbus_mapping = (modbus_mapping_t*)modbus_mapping_;
-    if(address >= (modbus_mapping->nb_bits)) {
+    if (address >= (modbus_mapping->nb_bits)) {
         return -1; /* return invalid address */
     }
-    else if(on) {
+    else if (on) {
         modbus_mapping->tab_bits[address] = 1;
     }
     else {
@@ -79,32 +88,37 @@ static int modbus_mapping_write_single_coil(void* modbus_mapping_, uint16_t addr
     return 0;
 }
 
-static int modbus_mapping_write_single_register(void* modbus_mapping_, uint16_t address, uint16_t value)
+static int modbus_mapping_write_single_register(void* modbus_mapping_,
+                            uint16_t address, uint16_t value)
 {
     modbus_mapping_t* modbus_mapping = (modbus_mapping_t*)modbus_mapping_;
-    if(address > modbus_mapping->nb_registers)
+    if (address > modbus_mapping->nb_registers)
         return -1; /* return invalid address */
     modbus_mapping->tab_registers[address] = value;
     return 0;
 }
 
-static int modbus_mapping_write_multiple_coils(void* modbus_mapping_, uint16_t starting_address, uint16_t quantity, const uint8_t values[])
+static int modbus_mapping_write_multiple_coils(void* modbus_mapping_,
+                            uint16_t starting_address, uint16_t quantity,
+                            const uint8_t values[])
 {
     modbus_mapping_t* modbus_mapping = (modbus_mapping_t*)modbus_mapping_;
-    if(starting_address + quantity > modbus_mapping->nb_bits)
+    if (starting_address + quantity > modbus_mapping->nb_bits)
         return -1;
-    for(int i = 0; i < quantity; ++i) {
-        modbus_mapping->tab_bits[starting_address + i] = (values[i/8] & (1 << i % 8))?1:0;
+    for (int i = 0; i < quantity; ++i) {
+        modbus_mapping->tab_bits[starting_address + i] = (values[i/8] & (1 << i % 8)) ? 1 : 0;
     }
     return 0;
 }
 
-static int modbus_mapping_write_multiple_registers(void* modbus_mapping_, uint16_t starting_address, uint16_t quantity, const uint16_t values[])
+static int modbus_mapping_write_multiple_registers(void* modbus_mapping_,
+                            uint16_t starting_address, uint16_t quantity,
+                            const uint16_t values[])
 {
     modbus_mapping_t* modbus_mapping = (modbus_mapping_t*)modbus_mapping_;
-    if(starting_address + quantity > modbus_mapping->nb_registers)
+    if (starting_address + quantity > modbus_mapping->nb_registers)
         return -1;
-    for(int i = 0; i < quantity; ++i) {
+    for (int i = 0; i < quantity; ++i) {
         modbus_mapping->tab_registers[starting_address + i] = values[i];
     }
     return 0;
@@ -199,7 +213,7 @@ modbus_mapping_t* modbus_default_mapping_new(int nb_bits, int nb_input_bits,
 
 void modbus_default_mapping_free(void* mb_mapping)
 {
-    if(mb_mapping)
+    if (mb_mapping)
     {
         modbus_mapping_t* mapping = (modbus_mapping_t*) mb_mapping;
         free(mapping->tab_bits);
